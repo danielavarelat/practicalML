@@ -1,0 +1,148 @@
+---
+title: "PracticalML"
+author: "Daniela Varela"
+date: "2/1/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(corrplot)
+library(rpart)
+library(rattle)
+library(dplyr)
+
+```
+## Overview 
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+
+## Load data
+```{r }
+train<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",header=T)
+test<-read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",header=T)
+```
+
+
+
+
+## Cleaning data
+
+Reducing the variables that contain missing values. 
+
+```{r }
+
+test <- test[, colSums(is.na(test)) == 0]
+train <- train[, colSums(is.na(train)) == 0]
+
+dim(test)
+dim(train)
+```
+
+Remove unnecesary variables. 
+
+
+```{r }
+test<-test[, -c(1:7)]
+train<-train[, -c(1:7)]
+```
+
+## Partition of training data
+```{r }
+training  <- createDataPartition(train$classe, p=0.7, list=FALSE)
+TrainSet <- train[training, ]
+TestSet  <- train[-training, ]
+dim(TrainSet)
+dim(TestSet)
+```
+
+
+Clear out variables with nearly zero variance.
+
+```{r }
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+dim(TrainSet)
+dim(TestSet)
+```
+
+53 variables are obtained after all the cleaning steps. 
+
+## Correlation analysis
+
+A correlation among variables is analysed before the modeling.
+
+
+```{r }
+
+matrix <- cor(select(TrainSet, -c("classe")))
+corrplot(matrix, order = "FPC", method = "color", type = "upper", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+
+```
+
+
+The most correlated variables are shown in dark colors above.
+If we want to inspect what are the most correlated variables above a threshold, we could do something like this: 
+
+```{r }
+
+mostCorrelated = findCorrelation(matrix, cutoff=0.75)
+names(TrainSet)[mostCorrelated]
+
+
+```
+
+# MODEL 
+
+## 1. Decision Tree
+
+```{r }
+set.seed(12345)
+model1 <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(model1)
+```
+### prediction 
+```{r }
+prediction1 <- predict(model1, newdata=TestSet, type="class")
+cm1 <- confusionMatrix(prediction1, TestSet$classe)
+cm1
+```
+```{r }
+plot(cm1$table, col = cm1$byClass, 
+     main = paste("Decision Tree - Accuracy =", round(cm1$overall['Accuracy'], 4)))
+```
+The accuracy in this case is = **0.741**, meaning that the out-of-sample-error is about 0.26. The acc is not low but we wouldnt say its high enough. That is why a more robust model is implemented, such as RANDOM FOREST. 
+
+
+## 2. Random Forest
+
+We will use **5-fold cross validation** when applying the algorithm.  
+
+```{r }
+model2 <- train(classe ~ ., data=TrainSet, method="rf", 
+                trControl=trainControl(method="cv", 5, verboseIter=FALSE))
+
+model2$finalModel
+```
+### prediction 
+```{r }
+prediction2 <- predict(model2, newdata=TestSet)
+cm2 <- confusionMatrix(prediction2, TestSet$classe)
+cm2
+```
+```{r}
+plot(cm2$table, col = cm2$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(cm2$overall['Accuracy'], 4)))
+```
+The accuracy in this case is very high = **0.9922**, an out-of-sample-error less than 0.01
+
+## Selected Model in the Test Data 
+
+```{r}
+predictTEST <- predict(model2, newdata=test)
+predictTEST
+```
